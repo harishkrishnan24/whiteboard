@@ -1,24 +1,34 @@
 import { useRef, useLayoutEffect, useState } from "react";
 import Menu from "./Menu";
 import rough from "roughjs/bundled/rough.esm";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { actions, toolTypes } from "../constants";
-import { createElement } from "./utils";
+import { createElement, drawElement, updateElement } from "./utils";
 import { v4 as uuid } from "uuid";
+import { updateElement as updateElementInStore } from "./whiteboardSlice";
+
+let selectedElement;
+
+const setSelectedElement = (el) => {
+  selectedElement = el;
+};
 
 const Whiteboard = () => {
   const canvasRef = useRef();
   const toolType = useSelector((state) => state.whiteboard.tool);
   const [action, setAction] = useState(null);
+  const dispatch = useDispatch();
+  const elements = useSelector((state) => state.whiteboard.elements);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    const rc = rough.canvas(canvas);
-    rc.rectangle(10, 10, 200, 200);
-    rc.rectangle(20, 20, 300, 300);
-    rc.line(80, 120, 300, 100);
-    rc.line(0, 0, 100, 100);
-  }, []);
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const roughCanvas = rough.canvas(canvas);
+    elements.forEach((element) => {
+      drawElement({ roughCanvas, context: ctx, element });
+    });
+  }, [elements]);
 
   const handleMouseDown = (event) => {
     const { clientX, clientY } = event;
@@ -36,7 +46,37 @@ const Whiteboard = () => {
       id: uuid(),
     });
 
+    setSelectedElement(element);
+    dispatch(updateElementInStore(element));
+
     console.log(element);
+  };
+
+  const handleMouseUp = () => {
+    setAction(null);
+    setSelectedElement(null);
+  };
+
+  const handleMouseMove = (event) => {
+    const { clientX, clientY } = event;
+
+    if (action === actions.DRAWING) {
+      const index = elements.findIndex((el) => el.id === selectedElement.id);
+      if (index !== -1) {
+        updateElement(
+          {
+            index,
+            id: elements[index].id,
+            x1: elements[index].x1,
+            y1: elements[index].y1,
+            x2: clientX,
+            y2: clientY,
+            type: elements[index].type,
+          },
+          elements
+        );
+      }
+    }
   };
 
   return (
@@ -44,6 +84,8 @@ const Whiteboard = () => {
       <Menu />
       <canvas
         onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
         ref={canvasRef}
         width={window.innerWidth}
         height={window.innerHeight}
